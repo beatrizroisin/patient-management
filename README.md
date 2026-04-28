@@ -83,28 +83,14 @@ psicogest/
 
 Como rodar localmente
 Pré-requisitos: Node.js 18+ instalado.
-bash# 1. Criar o projeto com Vite
+bash#
+
+1. Criar o projeto com Vite
 npm create vite@latest psicogest -- --template react
 cd psicogest
 npm install
-
-# 2. Substituir src/App.jsx pelo arquivo PsicoGest.jsx
-
-# 3. Substituir src/index.css pelo conteúdo abaixo
-
-# 4. Rodar
 npm run dev
-Conteúdo do src/index.css:
-css*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
 
-body {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
 Abra http://localhost:5173 no navegador.
 
 
