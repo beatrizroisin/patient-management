@@ -29,6 +29,27 @@ const WEEKDAYS_LABEL = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
 const WEEKDAYS_FULL  = ["Domingo","Segunda-feira","Terça-feira","Quarta-feira","Quinta-feira","Sexta-feira","Sábado"];
 const MONTHS_FULL    = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
 
+
+function Toast({ msg, onDone }) {
+  useEffect(() => {
+    if (!msg) return;
+    const id = setTimeout(onDone, 2400);
+    return () => clearTimeout(id);
+  }, [msg]);
+  if (!msg) return null;
+  return (
+    <div style={{
+      position:"fixed", bottom:"76px", left:"50%", transform:"translateX(-50%)",
+      background:"#2d2d2d", color:"#fff", padding:"10px 22px",
+      borderRadius:"24px", fontSize:"13px", fontWeight:600,
+      boxShadow:SH.lg, zIndex:2000, whiteSpace:"nowrap",
+      animation:"fadeIn 0.2s ease",
+    }}>
+      ✓ {msg}
+    </div>
+  );
+}
+
 // ─── SCHEDULE HELPERS ─────────────────────────────────────────────────────────
 // Returns today's recurrent appointments sorted by time
 function getTodayAppointments(patients) {
@@ -722,6 +743,7 @@ function Patients({ patients, setPatients, isMobile }) {
   const [filter, setFilter]   = useState("Todos");
   const [dossier, setDossier] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [toast, setToast]     = useState("");
   const blank = { name:"", age:"", profession:"", phone:"", emergency:"", status:"Ativo", type:"Particular", convenio:"", carteirinha:"", sessoesAutorizadas:"", tags:[], insight:"", notes:[], medHistory:"", observations:"", schedule:[] };
   const [form, setForm] = useState(blank);
   const f = v => setForm(prev=>({...prev,...v}));
@@ -732,17 +754,27 @@ function Patients({ patients, setPatients, isMobile }) {
     if (!form.name.trim()) return;
     setPatients([...patients, { ...form, id:Date.now(), age:Number(form.age)||0, sessionsTotal:0 }]);
     setForm(blank); setShowAdd(false);
+    setToast("Paciente salvo com sucesso!");
+  };
+
+  const deletePatient = (id, e) => {
+    e.stopPropagation();
+    if (!window.confirm("Excluir este paciente? Esta ação não pode ser desfeita.")) return;
+    setPatients(patients.filter(p=>p.id!==id));
+    setToast("Paciente excluído.");
   };
 
   const updatePatient = updated => {
     setPatients(patients.map(p=>p.id===updated.id?updated:p));
     setDossier(updated);
+    setToast("Alterações salvas!");
   };
 
   if (dossier) return <PatientDossier patient={dossier} onUpdate={updatePatient} onBack={()=>setDossier(null)} isMobile={isMobile} />;
 
   return (
     <div>
+      <Toast msg={toast} onDone={()=>setToast("")} />
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"20px" }}>
         <h1 style={{ margin:0, fontSize:isMobile?"22px":"26px", fontWeight:800, color:th.text, letterSpacing:"-0.02em" }}>Pacientes</h1>
         <Btn onClick={()=>setShowAdd(true)}>+ Novo</Btn>
@@ -774,12 +806,15 @@ function Patients({ patients, setPatients, isMobile }) {
           <Card key={p.id} hover onClick={()=>setDossier(p)}>
             <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"10px" }}>
               <div style={{ width:"40px", height:"40px", borderRadius:"50%", background:`linear-gradient(135deg,${th.primaryLight},${th.lavenderLight})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"15px", fontWeight:800, color:th.primaryDark }}>{p.name.charAt(0)}</div>
-              <Badge label={p.status} {...STATUS_COLORS[p.status]} small />
+              <div style={{ display:"flex", gap:"6px", alignItems:"center" }}>
+                <Badge label={p.status} {...STATUS_COLORS[p.status]} small />
+                <button onClick={e=>deletePatient(p.id,e)}
+                  title="Excluir paciente"
+                  style={{ background:"none", border:"none", cursor:"pointer", fontSize:"14px", color:th.textLight, padding:"2px 4px", borderRadius:"4px", lineHeight:1 }}>🗑</button>
+              </div>
             </div>
             <h3 style={{ margin:"0 0 3px", fontSize:"15px", fontWeight:700, color:th.text }}>{p.name}</h3>
             <p style={{ margin:"0 0 8px", fontSize:"12px", color:th.textLight }}>{p.age?`${p.age} anos · `:""}{p.profession||"—"}</p>
-
-            {/* Schedule preview */}
             {(p.schedule||[]).length>0 && (
               <div style={{ display:"flex", gap:"5px", flexWrap:"wrap", marginBottom:"8px" }}>
                 {(p.schedule||[]).map(s=>(
@@ -789,7 +824,6 @@ function Patients({ patients, setPatients, isMobile }) {
                 ))}
               </div>
             )}
-
             <div style={{ display:"flex", gap:"4px", flexWrap:"wrap" }}>
               {(p.tags||[]).slice(0,3).map(tag=><span key={tag} style={{ fontSize:"10px", padding:"2px 7px", borderRadius:"20px", background:th.lavenderLight, color:"#6B5A9E", fontWeight:600 }}>#{tag}</span>)}
             </div>
@@ -829,31 +863,72 @@ function Patients({ patients, setPatients, isMobile }) {
 
 // ─── FINANCE ─────────────────────────────────────────────────────────────────
 function Finance({ sessions, setSessions, expenses, setExpenses, patients, isMobile }) {
-  const [tab, setTab]     = useState("sessions");
+  const [tab,      setTab]      = useState("sessions");
   const [showSess, setShowSess] = useState(false);
   const [showExp,  setShowExp]  = useState(false);
   const [showRec,  setShowRec]  = useState(null);
-  const [rc, setRc] = useState({ title:"RECIBO DE CONSULTA PSICOLÓGICA", psicName:"Dra. [Nome]", crp:"CRP XX/XXXXX", address:"[Endereço]", sessionCount:"1", month:"", sessionDates:"", value:"", notes:"", patientName:"" });
-  const [ns, setNs] = useState({ patientName:"", date:"", time:"", value:"", status:"realizada" });
-  const [ne, setNe] = useState({ description:"", value:"", date:"", category:"Infraestrutura" });
+  const [editSess, setEditSess] = useState(null); // session being edited
+  const [editExp,  setEditExp]  = useState(null); // expense being edited
+  const [toast,    setToast]    = useState("");
 
-  const fmt = v=>`R$ ${v.toLocaleString("pt-BR",{minimumFractionDigits:2})}`;
+  const [rc, setRc] = useState({ title:"RECIBO DE CONSULTA PSICOLÓGICA", psicName:"Dra. [Nome]", crp:"CRP XX/XXXXX", address:"[Endereço]", sessionCount:"1", month:"", sessionDates:"", value:"", notes:"", patientName:"" });
+  const blankSess = { patientName:"", date:"", time:"", value:"", status:"realizada" };
+  const blankExp  = { description:"", value:"", date:"", category:"Infraestrutura" };
+  const [ns, setNs] = useState(blankSess);
+  const [ne, setNe] = useState(blankExp);
+
+  const fmt = v => `R$ ${v.toLocaleString("pt-BR",{minimumFractionDigits:2})}`;
+
+  // ── "A Receber" = sessões realizadas OU agendadas ainda não pagas
   const totalRec  = sessions.filter(s=>s.paid).reduce((a,s)=>a+s.value,0);
-  const totalPend = sessions.filter(s=>s.status==="realizada"&&!s.paid).reduce((a,s)=>a+s.value,0);
+  const totalPend = sessions.filter(s=>!s.paid && s.status!=="cancelada").reduce((a,s)=>a+s.value,0);
   const totalExp  = expenses.reduce((a,e)=>a+e.value,0);
 
-  const markPaid = (id,method) => setSessions(sessions.map(s=>s.id===id?{...s,paid:true,method}:s));
-
-  const addSess = () => {
-    if (!ns.patientName||!ns.date) return;
-    setSessions([...sessions,{...ns,id:Date.now(),paid:false,method:null,value:Number(ns.value)||0}]);
-    setNs({patientName:"",date:"",time:"",value:"",status:"realizada"}); setShowSess(false);
+  const markPaid = (id, method) => {
+    setSessions(sessions.map(s=>s.id===id?{...s,paid:true,method,status:"realizada"}:s));
+    setToast("Sessão marcada como paga!");
   };
 
-  const addExp = () => {
+  // ── ADD / EDIT session
+  const openAddSess  = () => { setEditSess(null); setNs(blankSess); setShowSess(true); };
+  const openEditSess = (s,e) => { e.stopPropagation(); setEditSess(s); setNs({patientName:s.patientName,date:s.date,time:s.time,value:String(s.value),status:s.status}); setShowSess(true); };
+  const saveSess = () => {
+    if (!ns.patientName||!ns.date) return;
+    if (editSess) {
+      setSessions(sessions.map(s=>s.id===editSess.id?{...s,...ns,value:Number(ns.value)||0}:s));
+      setToast("Sessão atualizada!");
+    } else {
+      setSessions([...sessions,{...ns,id:Date.now(),paid:false,method:null,value:Number(ns.value)||0}]);
+      setToast("Sessão registrada!");
+    }
+    setShowSess(false); setEditSess(null); setNs(blankSess);
+  };
+  const deleteSess = (id,e) => {
+    e.stopPropagation();
+    if (!window.confirm("Excluir esta sessão?")) return;
+    setSessions(sessions.filter(s=>s.id!==id));
+    setToast("Sessão excluída.");
+  };
+
+  // ── ADD / EDIT expense
+  const openAddExp  = () => { setEditExp(null); setNe(blankExp); setShowExp(true); };
+  const openEditExp = (ex,e) => { e.stopPropagation(); setEditExp(ex); setNe({description:ex.description,value:String(ex.value),date:ex.date,category:ex.category}); setShowExp(true); };
+  const saveExp = () => {
     if (!ne.description||!ne.value) return;
-    setExpenses([...expenses,{...ne,id:Date.now(),value:Number(ne.value)}]);
-    setNe({description:"",value:"",date:"",category:"Infraestrutura"}); setShowExp(false);
+    if (editExp) {
+      setExpenses(expenses.map(ex=>ex.id===editExp.id?{...ex,...ne,value:Number(ne.value)}:ex));
+      setToast("Gasto atualizado!");
+    } else {
+      setExpenses([...expenses,{...ne,id:Date.now(),value:Number(ne.value)}]);
+      setToast("Gasto registrado!");
+    }
+    setShowExp(false); setEditExp(null); setNe(blankExp);
+  };
+  const deleteExp = (id,e) => {
+    e.stopPropagation();
+    if (!window.confirm("Excluir este gasto?")) return;
+    setExpenses(expenses.filter(ex=>ex.id!==id));
+    setToast("Gasto excluído.");
   };
 
   const openReceipt = s => {
@@ -867,7 +942,7 @@ function Finance({ sessions, setSessions, expenses, setExpenses, patients, isMob
     <style>body{font-family:Georgia,serif;max-width:600px;margin:40px auto;color:#2d2d2d;line-height:1.8}
     h1{font-size:17px;text-align:center}hr{border:none;border-top:1px solid #ccc;margin:20px 0}
     .val{font-size:24px;font-weight:bold;text-align:center;margin:20px 0}
-    .sig{margin-top:60px;text-align:center;border-top:1px solid #555;width:280px;margin:60px auto 0;padding-top:10px;font-size:13px}
+    .sig{text-align:center;border-top:1px solid #555;width:280px;margin:60px auto 0;padding-top:10px;font-size:13px}
     </style></head><body>
     <h1>${rc.title}</h1><hr/>
     <p><strong>Paciente:</strong> ${rc.patientName}</p>
@@ -887,11 +962,13 @@ function Finance({ sessions, setSessions, expenses, setExpenses, patients, isMob
 
   return (
     <div>
+      <Toast msg={toast} onDone={()=>setToast("")} />
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"20px" }}>
         <h1 style={{ margin:0, fontSize:isMobile?"22px":"26px", fontWeight:800, color:th.text, letterSpacing:"-0.02em" }}>Financeiro</h1>
-        <Btn small onClick={()=>tab==="sessions"?setShowSess(true):setShowExp(true)}>+ Lançar</Btn>
+        <Btn small onClick={()=>tab==="sessions"?openAddSess():openAddExp()}>+ Lançar</Btn>
       </div>
 
+      {/* Summary cards */}
       <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr 1fr":"repeat(4,1fr)", gap:"12px", marginBottom:"18px" }}>
         {[
           { label:"Recebido",  value:fmt(totalRec),           color:th.success,    bg:"#EDF5F1" },
@@ -906,6 +983,7 @@ function Finance({ sessions, setSessions, expenses, setExpenses, patients, isMob
         ))}
       </div>
 
+      {/* Tabs */}
       <div style={{ display:"flex", gap:"4px", marginBottom:"16px", background:th.border, borderRadius:R.sm, padding:"4px", width:"fit-content" }}>
         {[["sessions","Sessões"],["expenses","Gastos"]].map(([id,lbl])=>(
           <button key={id} onClick={()=>setTab(id)}
@@ -915,6 +993,7 @@ function Finance({ sessions, setSessions, expenses, setExpenses, patients, isMob
         ))}
       </div>
 
+      {/* Sessions list */}
       {tab==="sessions" && (
         <Card>
           <h3 style={{ margin:"0 0 14px", fontSize:"15px", fontWeight:700, color:th.text }}>Controle de Sessões</h3>
@@ -927,14 +1006,24 @@ function Finance({ sessions, setSessions, expenses, setExpenses, patients, isMob
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:"6px" }}>
                   <div>
                     <p style={{ margin:"0 0 2px", fontWeight:700, fontSize:"13px", color:th.text }}>{s.patientName}</p>
-                    <p style={{ margin:0, fontSize:"12px", color:th.textLight }}>{s.date}{s.time?` · ${s.time}`:""}</p>
+                    <p style={{ margin:0, fontSize:"12px", color:th.textLight }}>{s.date}{s.time?` · ${s.time}`:""} · <em style={{ color:th.textLight }}>{s.status}</em></p>
                   </div>
-                  <div style={{ textAlign:"right" }}>
-                    <p style={{ margin:"0 0 2px", fontWeight:800, fontSize:"14px", color:th.text }}>R$ {s.value}</p>
-                    {s.paid&&<span style={{ fontSize:"11px", color:th.success, fontWeight:600 }}>{MI[s.method]} {s.method}</span>}
+                  <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+                    <div style={{ textAlign:"right" }}>
+                      <p style={{ margin:"0 0 2px", fontWeight:800, fontSize:"14px", color:th.text }}>R$ {s.value}</p>
+                      {s.paid&&<span style={{ fontSize:"11px", color:th.success, fontWeight:600 }}>{MI[s.method]} {s.method}</span>}
+                    </div>
+                    {/* Edit + Delete */}
+                    <div style={{ display:"flex", gap:"4px" }}>
+                      <button onClick={e=>openEditSess(s,e)} title="Editar"
+                        style={{ background:"none", border:"none", cursor:"pointer", fontSize:"14px", color:th.textLight, padding:"2px 5px", borderRadius:"4px" }}>✏️</button>
+                      <button onClick={e=>deleteSess(s.id,e)} title="Excluir"
+                        style={{ background:"none", border:"none", cursor:"pointer", fontSize:"14px", color:th.textLight, padding:"2px 5px", borderRadius:"4px" }}>🗑</button>
+                    </div>
                   </div>
                 </div>
-                {!s.paid&&s.status==="realizada"&&(
+                {/* Payment buttons — show if not paid */}
+                {!s.paid&&(
                   <div style={{ display:"flex", gap:"5px", flexWrap:"wrap", marginTop:"9px" }}>
                     {["Pix","Dinheiro","Cartão","Transferência"].map(m=>(
                       <Btn key={m} small variant="secondary" onClick={()=>markPaid(s.id,m)} style={{ fontSize:"11px" }}>{MI[m]} {m}</Btn>
@@ -948,6 +1037,7 @@ function Finance({ sessions, setSessions, expenses, setExpenses, patients, isMob
         </Card>
       )}
 
+      {/* Expenses list */}
       {tab==="expenses" && (
         <Card>
           <h3 style={{ margin:"0 0 14px", fontSize:"15px", fontWeight:700, color:th.text }}>Gastos do Consultório</h3>
@@ -959,9 +1049,18 @@ function Finance({ sessions, setSessions, expenses, setExpenses, patients, isMob
                   <p style={{ margin:"0 0 2px", fontWeight:600, fontSize:"13px", color:th.text }}>{e.description}</p>
                   <span style={{ fontSize:"10px", padding:"2px 7px", borderRadius:"10px", background:th.lavenderLight, color:"#6B5A9E", fontWeight:600 }}>{e.category}</span>
                 </div>
-                <div style={{ textAlign:"right" }}>
-                  <p style={{ margin:"0 0 2px", fontWeight:800, fontSize:"14px", color:th.danger }}>− R$ {e.value.toLocaleString("pt-BR",{minimumFractionDigits:2})}</p>
-                  <p style={{ margin:0, fontSize:"11px", color:th.textLight }}>{e.date}</p>
+                <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                  <div style={{ textAlign:"right" }}>
+                    <p style={{ margin:"0 0 2px", fontWeight:800, fontSize:"14px", color:th.danger }}>− R$ {e.value.toLocaleString("pt-BR",{minimumFractionDigits:2})}</p>
+                    <p style={{ margin:0, fontSize:"11px", color:th.textLight }}>{e.date}</p>
+                  </div>
+                  {/* Edit + Delete */}
+                  <div style={{ display:"flex", gap:"4px" }}>
+                    <button onClick={ex=>openEditExp(e,ex)} title="Editar"
+                      style={{ background:"none", border:"none", cursor:"pointer", fontSize:"14px", color:th.textLight, padding:"2px 5px", borderRadius:"4px" }}>✏️</button>
+                    <button onClick={ex=>deleteExp(e.id,ex)} title="Excluir"
+                      style={{ background:"none", border:"none", cursor:"pointer", fontSize:"14px", color:th.textLight, padding:"2px 5px", borderRadius:"4px" }}>🗑</button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -969,7 +1068,8 @@ function Finance({ sessions, setSessions, expenses, setExpenses, patients, isMob
         </Card>
       )}
 
-      <Modal open={showSess} onClose={()=>setShowSess(false)} title="Registrar Sessão">
+      {/* Session modal (add + edit) */}
+      <Modal open={showSess} onClose={()=>{ setShowSess(false); setEditSess(null); }} title={editSess?"Editar Sessão":"Registrar Sessão"}>
         <div style={{ display:"flex", flexDirection:"column", gap:"13px" }}>
           <Sel label="Paciente" value={ns.patientName} onChange={v=>setNs({...ns,patientName:v})} options={[{value:"",label:"Selecionar..."},...patients.map(p=>({value:p.name,label:p.name}))]} />
           <Inp label="Data" value={ns.date} onChange={v=>setNs({...ns,date:v})} type="date" />
@@ -977,25 +1077,27 @@ function Finance({ sessions, setSessions, expenses, setExpenses, patients, isMob
           <Inp label="Valor (R$)" value={ns.value} onChange={v=>setNs({...ns,value:v})} type="number" />
           <Sel label="Status" value={ns.status} onChange={v=>setNs({...ns,status:v})} options={[{value:"realizada",label:"Realizada"},{value:"agendada",label:"Agendada"},{value:"cancelada",label:"Cancelada"}]} />
           <div style={{ display:"flex", justifyContent:"flex-end", gap:"10px" }}>
-            <Btn variant="secondary" onClick={()=>setShowSess(false)}>Cancelar</Btn>
-            <Btn onClick={addSess}>Salvar</Btn>
+            <Btn variant="secondary" onClick={()=>{ setShowSess(false); setEditSess(null); }}>Cancelar</Btn>
+            <Btn onClick={saveSess}>{editSess?"Atualizar":"Salvar"}</Btn>
           </div>
         </div>
       </Modal>
 
-      <Modal open={showExp} onClose={()=>setShowExp(false)} title="Novo Gasto">
+      {/* Expense modal (add + edit) */}
+      <Modal open={showExp} onClose={()=>{ setShowExp(false); setEditExp(null); }} title={editExp?"Editar Gasto":"Novo Gasto"}>
         <div style={{ display:"flex", flexDirection:"column", gap:"13px" }}>
           <Inp label="Descrição" value={ne.description} onChange={v=>setNe({...ne,description:v})} placeholder="Ex: Aluguel consultório" />
           <Inp label="Valor (R$)" value={ne.value} onChange={v=>setNe({...ne,value:v})} type="number" />
           <Inp label="Data" value={ne.date} onChange={v=>setNe({...ne,date:v})} type="date" />
           <Sel label="Categoria" value={ne.category} onChange={v=>setNe({...ne,category:v})} options={["Infraestrutura","Desenvolvimento","Material","Outros"].map(c=>({value:c,label:c}))} />
           <div style={{ display:"flex", justifyContent:"flex-end", gap:"10px" }}>
-            <Btn variant="secondary" onClick={()=>setShowExp(false)}>Cancelar</Btn>
-            <Btn onClick={addExp}>Salvar</Btn>
+            <Btn variant="secondary" onClick={()=>{ setShowExp(false); setEditExp(null); }}>Cancelar</Btn>
+            <Btn onClick={saveExp}>{editExp?"Atualizar":"Salvar"}</Btn>
           </div>
         </div>
       </Modal>
 
+      {/* Receipt modal */}
       <Modal open={!!showRec} onClose={()=>setShowRec(null)} title="Gerar Recibo" wide>
         <div style={{ display:"grid", gridTemplateColumns:isMobile?"1fr":"1fr 1fr", gap:"13px" }}>
           <Inp label="Título" value={rc.title} onChange={v=>setRc({...rc,title:v})} style={{ gridColumn:isMobile?"1":"1 / -1" }} />
@@ -1244,8 +1346,8 @@ export default function App() {
       <div style={{ display:"flex", alignItems:"center", gap:"9px", padding:"8px 12px" }}>
         <div style={{ width:"30px", height:"30px", borderRadius:"50%", background:`linear-gradient(135deg,${th.primary},${th.accent})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"12px", fontWeight:800, color:"#fff", flexShrink:0 }}>P</div>
         <div>
-          <p style={{ margin:0, fontSize:"12px", fontWeight:700, color:th.text }}>Psicóloga</p>
-          <p style={{ margin:0, fontSize:"10px", color:th.textLight }}>CRP XX/XXXXX</p>
+          <p style={{ margin:0, fontSize:"12px", fontWeight:700, color:th.text }}>Nivea Tetti Roisin</p>
+          <p style={{ margin:0, fontSize:"10px", color:th.textLight }}>CBPC 2022-2954</p>
         </div>
       </div>
     </div>
